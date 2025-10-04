@@ -21,6 +21,11 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[];  // trampoline.S
 
+// 外部声明，引用sysproc.c中的全局变量
+extern int next;
+
+  static char *states[] = {
+      [UNUSED] "unused", [SLEEPING] "sleep ", [RUNNABLE] "runble", [RUNNING] "run   ", [ZOMBIE] "zombie"};
 // initialize the proc table at boot time.
 void procinit(void) {
   struct proc *p;
@@ -338,6 +343,19 @@ void exit(int status) {
 
   acquire(&p->lock);
 
+  // 打印父进程信息
+  exit_info("proc %d exit, parent pid %d, name %s, state %s\n", p->pid, p->parent->pid, p->parent->name, states[p->parent->state]);
+  
+  // 在重新分配子进程前，打印子进程信息
+  struct proc *child_proc;
+  int child_count = 0;
+  for(child_proc = proc; child_proc < &proc[NPROC]; child_proc++) {
+    if(child_proc->parent == p) {
+      exit_info("proc %d exit, child %d, pid %d, name %s, state %s\n", p->pid, child_count, child_proc->pid, child_proc->name, states[child_proc->state]);
+      child_count++;
+    }
+  }
+
   // Give any children to init.
   reparent(p);
 
@@ -346,7 +364,6 @@ void exit(int status) {
 
   p->xstate = status;
   p->state = ZOMBIE;
-
   release(&original_parent->lock);
 
   // Jump into the scheduler, never to return.
@@ -355,8 +372,8 @@ void exit(int status) {
 }
 
 // Wait for a child process to exit and return its pid.
-// Return -1 if this process has no children.
-int wait(uint64 addr) {
+// Return -1 if this process has no children or in non-blocking mode with no zombies.
+int wait(uint64 addr, int flags) {
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
@@ -365,44 +382,51 @@ int wait(uint64 addr) {
   // wakeups from a child's exit().
   acquire(&p->lock);
 
-  for (;;) {
-    // Scan through table looking for exited children.
-    havekids = 0;
-    for (np = proc; np < &proc[NPROC]; np++) {
-      // this code uses np->parent without holding np->lock.
-      // acquiring the lock first would cause a deadlock,
-      // since np might be an ancestor, and we already hold p->lock.
-      if (np->parent == p) {
-        // np->parent can't change between the check and the acquire()
-        // because only the parent changes it, and we're the parent.
-        acquire(&np->lock);
-        havekids = 1;
-        if (np->state == ZOMBIE) {
-          // Found one.
-          pid = np->pid;
-          if (addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate, sizeof(np->xstate)) < 0) {
-            release(&np->lock);
-            release(&p->lock);
-            return -1;
-          }
-          freeproc(np);
+  // Scan through table looking for exited children.
+  havekids = 0;
+  for (np = proc; np < &proc[NPROC]; np++) {
+    // this code uses np->parent without holding np->lock.
+    // acquiring the lock first would cause a deadlock,
+    // since np might be an ancestor, and we already hold p->lock.
+    if (np->parent == p) {
+      // np->parent can't change between the check and the acquire()
+      // because only the parent changes it, and we're the parent.
+      acquire(&np->lock);
+      havekids = 1;
+      if (np->state == ZOMBIE) {
+        // Found one.
+        pid = np->pid;
+        if (addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate, sizeof(np->xstate)) < 0) {
           release(&np->lock);
           release(&p->lock);
-          return pid;
+          return -1;
         }
         release(&np->lock);
+        release(&p->lock);
+        return pid;
       }
+      release(&np->lock);
     }
-
-    // No point waiting if we don't have any children.
-    if (!havekids || p->killed) {
-      release(&p->lock);
-      return -1;
-    }
-
-    // Wait for a child to exit.
-    sleep(p, &p->lock);  // DOC: wait-sleep
   }
+
+  // In non-blocking mode (flags=1), return immediately if no zombies found
+  if (flags == 1) {
+    release(&p->lock);
+    return -1;
+  }
+
+  // No point waiting if we don't have any children.
+  if (!havekids || p->killed) {
+    release(&p->lock);
+    return -1;
+  }
+
+  // Wait for a child to exit (blocking mode).
+  sleep(p, &p->lock);  // DOC: wait-sleep
+
+  // After waking up, recursively call wait again to check for zombies
+  release(&p->lock);
+  return wait(addr, flags);
 }
 
 // Per-CPU process scheduler.
@@ -430,6 +454,10 @@ void scheduler(void) {
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        if (next) {
+          printf("Next runnable process pid is %d and user pc is %p\n", p->pid, p->trapframe->epc);
+          next = 0;  // 重置标志位，避免重复打印
+        }
         swtch(&c->context, &p->context);
 
         // Process is done running for now.

@@ -20,8 +20,11 @@ uint64 sys_fork(void) { return fork(); }
 
 uint64 sys_wait(void) {
   uint64 p;
+  int flags = 0;
   if (argaddr(0, &p) < 0) return -1;
-  return wait(p);
+  // Try to get the optional flags argument
+  argint(1, &flags);
+  return wait(p, flags);
 }
 
 uint64 sys_sbrk(void) {
@@ -79,5 +82,23 @@ uint64 sys_rename(void) {
   struct proc *p = myproc();
   memmove(p->name, name, len);
   p->name[len] = '\0';
+  return 0;
+}
+
+// 全局变量，用于控制是否打印next信息
+int next = 0;
+
+// 实现yield系统调用
+uint64 sys_yield(void) {
+  struct proc *p = myproc();
+  // 打印进程的内核线程上下文被保存的地址范围
+  printf("Save the context of the process to the memory region from address %p to %p\n", &p->context, (char *)&p->context + sizeof(p->context));
+  
+  // 打印当前进程的pid和用户态的pc值
+  printf("Current running process pid is %d and user pc is %p\n", p->pid, p->trapframe->epc);
+  next = 1;
+  // 将当前进程让出CPU，调用已有的yield函数
+  yield();
+ 
   return 0;
 }
