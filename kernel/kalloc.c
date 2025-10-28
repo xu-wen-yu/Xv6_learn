@@ -1,6 +1,5 @@
-// Physical memory allocator, for user processes,
-// kernel stacks, page-table pages,
-// and pipe buffers. Allocates whole 4096-byte pages.
+// 物理内存分配器，供用户进程、内核栈、页表页和管道缓冲区使用。
+// 分配整页（4096 字节）。
 
 #include "types.h"
 #include "param.h"
@@ -11,8 +10,8 @@
 
 void freerange(void *pa_start, void *pa_end);
 
-extern char end[];  // first address after kernel.
-                    // defined by kernel.ld.
+extern char end[];  // 内核之后的第一个地址。
+                    // 由 kernel.ld 定义。
 
 struct run {
   struct run *next;
@@ -34,10 +33,8 @@ void freerange(void *pa_start, void *pa_end) {
   for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE) kfree(p);
 }
 
-// Free the page of physical memory pointed at by v,
-// which normally should have been returned by a
-// call to kalloc().  (The exception is when
-// initializing the allocator; see kinit above.)
+// 释放由 v 指向的物理内存页，该页面通常应由 kalloc() 返回。
+// （例外情况是在初始化分配器时；参见上方的 kinit。）
 void kfree(void *pa) {
   struct run *r;
 
@@ -54,9 +51,8 @@ void kfree(void *pa) {
   release(&kmem.lock);
 }
 
-// Allocate one 4096-byte page of physical memory.
-// Returns a pointer that the kernel can use.
-// Returns 0 if the memory cannot be allocated.
+// 分配一个 4096 字节的物理页面。
+// 返回内核可使用的指针；若无法分配则返回 0。
 void *kalloc(void) {
   struct run *r;
 
