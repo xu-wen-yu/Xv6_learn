@@ -82,7 +82,7 @@ void test1(void)
 }
 
 //
-// countfree() from usertests.c
+// 来自 usertests.c 的 countfree()
 //
 int
 countfree()
@@ -95,7 +95,7 @@ countfree()
     if(a == 0xffffffffffffffff){
       break;
     }
-    // modify the memory to make sure it's really allocated.
+    // 修改内存以确保它确实被分配。
     *(char *)(a + 4096 - 1) = 1;
     n += 1;
   }
