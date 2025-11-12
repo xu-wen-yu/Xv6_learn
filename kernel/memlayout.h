@@ -1,36 +1,36 @@
-// Physical memory layout
+// 物理内存布局
 
-// qemu -machine virt is set up like this,
-// based on qemu's hw/riscv/virt.c:
+// qemu 使用 -machine virt 时的内存布局如下，
+// 布局依据 qemu 的 hw/riscv/virt.c：
 //
-// 00001000 -- boot ROM, provided by qemu
+// 00001000 -- 启动 ROM，由 qemu 提供
 // 02000000 -- CLINT
 // 0C000000 -- PLIC
 // 10000000 -- uart0 
-// 10001000 -- virtio disk 
-// 80000000 -- boot ROM jumps here in machine mode
-//             -kernel loads the kernel here
-// unused RAM after 80000000.
+// 10001000 -- virtio 磁盘 
+// 80000000 -- 启动 ROM 在机器模式下跳转到此
+//             -kernel 在此处加载内核
+// 80000000 之后是未使用的 RAM。
 
-// the kernel uses physical memory thus:
-// 80000000 -- entry.S, then kernel text and data
-// end -- start of kernel page allocation area
-// PHYSTOP -- end RAM used by the kernel
+// 内核以如下方式使用物理内存：
+// 80000000 -- entry.S，然后是内核的文本和数据
+// end -- 内核页分配区域的起始地址
+// PHYSTOP -- 内核使用的 RAM 结束位置
 
-// qemu puts UART registers here in physical memory.
+// qemu 在物理内存中的这个位置放置 UART 寄存器。
 #define UART0 0x10000000L
 #define UART0_IRQ 10
 
-// virtio mmio interface
+// virtio mmio 接口
 #define VIRTIO0 0x10001000
 #define VIRTIO0_IRQ 1
 
-// local interrupt controller, which contains the timer.
+// 本地中断控制器，内部包含定时器。
 #define CLINT 0x2000000L
 #define CLINT_MTIMECMP(hartid) (CLINT + 0x4000 + 8*(hartid))
 #define CLINT_MTIME (CLINT + 0xBFF8) // cycles since boot.
 
-// qemu puts programmable interrupt controller here.
+// qemu 在此放置可编程中断控制器。
 #define PLIC 0x0c000000L
 #define PLIC_PRIORITY (PLIC + 0x0)
 #define PLIC_PENDING (PLIC + 0x1000)
@@ -41,27 +41,26 @@
 #define PLIC_MCLAIM(hart) (PLIC + 0x200004 + (hart)*0x2000)
 #define PLIC_SCLAIM(hart) (PLIC + 0x201004 + (hart)*0x2000)
 
-// the kernel expects there to be RAM
-// for use by the kernel and user pages
-// from physical address 0x80000000 to PHYSTOP.
+// 内核假定在物理地址 0x80000000 到 PHYSTOP 之间存在 RAM，
+// 供内核和用户页使用。
 #define KERNBASE 0x80000000L
 #define PHYSTOP (KERNBASE + 128*1024*1024)
 
-// map the trampoline page to the highest address,
-// in both user and kernel space.
+// 将 trampoline 页面映射到最高地址，
+// 用户态和内核态共享。
 #define TRAMPOLINE (MAXVA - PGSIZE)
 
-// map kernel stacks beneath the trampoline,
-// each surrounded by invalid guard pages.
+// 在 trampoline 下方映射内核栈，
+// 每个栈两侧都由无效保护页包围。
 #define KSTACK(p) (TRAMPOLINE - ((p)+1)* 2*PGSIZE)
 
-// User memory layout.
-// Address zero first:
-//   text
-//   original data and bss
-//   fixed-size stack
-//   expandable heap
+// 用户内存布局。
+// 从地址零开始：
+//   文本段
+//   原始数据段和 bss
+//   固定大小的栈
+//   可扩展的堆
 //   ...
-//   TRAPFRAME (p->trapframe, used by the trampoline)
-//   TRAMPOLINE (the same page as in the kernel)
+//   TRAPFRAME（p->trapframe，由 trampoline 使用）
+//   TRAMPOLINE（与内核中相同的页面）
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
